@@ -15,8 +15,10 @@ contract Bingo is Ownable {
     uint256 public turnDuration; // time for taking a turn in the game in seconds
     uint256 public joinFee; // fee to join the game in wei
 
-    mapping(address => bytes[]) public playerBoard; // Randomized player board
+    mapping(address => uint256) public playerBoard; // Randomized player board
     mapping(address => bytes) public marked; // true if square has been marked for player
+
+    mapping(address => bytes) public board; // player board with marked squares for player
 
     uint256 public gameInitiatedTimestamp; // timestamp at which game has been initiated and players can join
     uint256 public gameStartedTimestamp; // timestamp at which game has started
@@ -106,12 +108,13 @@ contract Bingo is Ownable {
         token.safeTransferFrom(msg.sender, address(this), joinFee);
 
         // Initialize board
-        playerBoard[msg.sender] = new bytes[](5);
+        uint8[][] memory _board = new uint8[][](5);
+        //bool[][] memory _marked = new bool[][](5);
+        (_board, ) = generateBoard();
+
+        playerBoard[msg.sender] = encodeGrid(_board);
+
         bool[][] memory _marked = generateMarked();
-        // Generate board
-        for(uint256 i = 0 ; i < 5 ; ++i) {
-            playerBoard[msg.sender][i] = randomBytes();
-        }
         console.log('gas left: %s', gasleft());
         marked[msg.sender] = encodeMarked(_marked);
         console.log('gas left: %s', gasleft());
@@ -126,7 +129,7 @@ contract Bingo is Ownable {
     function markNumber(uint256 row, uint256 col) public {
         require(block.timestamp > gameStartedTimestamp, "Game hasn't started");
         if(!getMarked(msg.sender, row, col)) {
-            if(uint8(playerBoard[msg.sender][row][col]) == lastDrawnNumber) {
+            if((decodeGrid(playerBoard[msg.sender])[row][col]) == lastDrawnNumber) {
                 setMarked(msg.sender, row, col);
             }
         }
@@ -214,15 +217,7 @@ contract Bingo is Ownable {
      * Get player board
      */
     function getBoard(address player) public view returns(uint8[][] memory) {
-        bytes[] memory _board = playerBoard[player];
-        uint8[][] memory result = new uint8[][](5);
-        for(uint i = 0 ; i < 5 ; ++i) {
-            result[i] = new uint8[](5);
-            for(uint j = 0 ; j < 5 ; ++j) {
-                result[i][j] = uint8(_board[i][j]);
-            }
-        }
-        return result;
+        return decodeGrid(playerBoard[player]);
     }
 
     /**
@@ -292,7 +287,7 @@ contract Bingo is Ownable {
     }
 
     function getBoardNumber(address player, uint8 row, uint8 col) public view returns (uint8) {
-        return uint8(playerBoard[player][row][col]);
+        return uint8(decodeGrid(playerBoard[player])[row][col]);
     }
 
     function encodeMarked(bool[][] memory _marked) private pure returns(bytes memory) {
@@ -325,6 +320,58 @@ contract Bingo is Ownable {
         bytes memory _marked = marked[player];
         bool[][] memory __marked = decodeMarked(_marked);
         return __marked[row][col];
+    }
+
+    /**
+     * Encode uint8 matrix in uint256
+     * Grid must be 5x5
+     */
+    function encodeGrid(uint8[][] memory grid) public pure returns(uint256 result) {
+        uint shift = 0;
+        for(uint i = 0 ; i < 5 ; ++i) {
+            for(uint j = 0 ; j < 5 ; ++j) {
+                result |= uint(grid[i][j]) << shift;
+                shift += 8;
+            }
+        }
+    }
+
+    /**
+     * Decode uint256 to a uint8 matrix
+     * We know the matrix is 5x5
+     */
+    function decodeGrid(uint256 gridNum) public pure returns(uint8[][] memory grid) {
+        uint shift = 0;
+        grid = new uint8[][](5);
+        for(uint i = 0 ; i < 5 ; ++i) {
+            grid[i] = new uint8[](5);
+            for(uint j = 0 ; j < 5 ; ++j) {
+                grid[i][j] = uint8(gridNum >> shift);
+                shift += 8;
+            }
+        }    
+    }
+
+    /**
+     * Encode 4 uint64 values in uint256
+     */
+    function encodeNum(uint64 val1, uint64 val2, uint64 val3, uint64 val4) external view returns(uint256 result) {
+        result |= val1;
+        console.log('result: %s', result);
+        result |= uint(val2) << 64;
+        console.log('result: %s', result);
+        result |= uint(val3) << 128;
+        result |= uint(val4) << 192;
+    }
+
+    /**
+     * Decode a uint256 into 4 uint64 values
+     */
+    function decodeNum(uint256 combined) external pure returns (uint64 variable1, uint64 variable2, uint64 variable3, uint64 variable4) {
+        variable1 = uint64(combined);
+        variable2 = uint64(combined >> 64);
+        variable3 = uint64(combined >> 128);
+        variable4 = uint64(combined >> 192);
     }
 
     /**
