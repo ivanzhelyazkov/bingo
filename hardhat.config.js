@@ -12,11 +12,7 @@ require('dotenv').config();
 module.exports = {
   networks: {
     hardhat: {
-			forking: {
-				url: process.env.ALCHEMY_URL,
-        enabled: false,
-        blockNumber: 15395600
-			}
+      
     }
   },
   solidity: {
