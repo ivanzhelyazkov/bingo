@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import 'hardhat/console.sol';
+
 contract Bingo is Ownable {
     using SafeERC20 for IERC20;
 
@@ -13,8 +15,8 @@ contract Bingo is Ownable {
     uint256 public turnDuration; // time for taking a turn in the game in seconds
     uint256 public joinFee; // fee to join the game in wei
 
-    mapping(address => uint8[][]) public playerBoard; // Randomized player board
-    mapping(address => bool[][]) public marked; // true if square has been marked for player
+    mapping(address => bytes[]) public playerBoard; // Randomized player board
+    mapping(address => bytes) public marked; // true if square has been marked for player
 
     uint256 public gameInitiatedTimestamp; // timestamp at which game has been initiated and players can join
     uint256 public gameStartedTimestamp; // timestamp at which game has started
@@ -104,17 +106,15 @@ contract Bingo is Ownable {
         token.safeTransferFrom(msg.sender, address(this), joinFee);
 
         // Initialize board
-        playerBoard[msg.sender] = new uint8[][](5);
-        marked[msg.sender] = new bool[][](5);
-        uint8 counter = 0;
+        playerBoard[msg.sender] = new bytes[](5);
+        bool[][] memory _marked = generateMarked();
+        // Generate board
         for(uint256 i = 0 ; i < 5 ; ++i) {
-            for(uint256 j = 0 ; j < 5 ; ++j) {
-                playerBoard[msg.sender][i].push(random(counter));
-                counter++;
-                marked[msg.sender][i].push(false);
-            }
+            playerBoard[msg.sender][i] = randomBytes();
         }
-        marked[msg.sender][2][2] = true; // mark middle square
+        console.log('gas left: %s', gasleft());
+        marked[msg.sender] = encodeMarked(_marked);
+        console.log('gas left: %s', gasleft());
         playersJoined++;
     }
 
@@ -125,9 +125,9 @@ contract Bingo is Ownable {
      */
     function markNumber(uint256 row, uint256 col) public {
         require(block.timestamp > gameStartedTimestamp, "Game hasn't started");
-        if(!marked[msg.sender][row][col]) {
-            if(playerBoard[msg.sender][row][col] == lastDrawnNumber) {
-                marked[msg.sender][row][col] = true;
+        if(!getMarked(msg.sender, row, col)) {
+            if(uint8(playerBoard[msg.sender][row][col]) == lastDrawnNumber) {
+                setMarked(msg.sender, row, col);
             }
         }
     }
@@ -145,14 +145,14 @@ contract Bingo is Ownable {
         // Counting horizontally
         if(direction == 0) {
             for(uint256 i = 0 ; i < 5 ; ++i) {
-                if(!marked[msg.sender][startSquare][i]) {
+                if(!getMarked(msg.sender, startSquare, i)) {
                     return;
                 }
             }
         // Counting vertically
         } else if(direction == 1) {
             for(uint256 i = 0 ; i < 5 ; ++i) {
-                if(!marked[msg.sender][i][startSquare]) {
+                if(!getMarked(msg.sender, i, startSquare)) {
                     return;
                 }
             }
@@ -161,14 +161,14 @@ contract Bingo is Ownable {
             require(startSquare == 0 || startSquare == 4, "Only two diagonals");
             if(startSquare == 0) {
                 for(uint256 i = 0 ; i < 5 ; ++i) {
-                    if(!marked[msg.sender][i][i]) {
+                    if(!getMarked(msg.sender, i, i)) {
                         return;
                     }
                 }
             }
             if(startSquare == 4) {
                 for(uint256 i = 4 ; i >= 0 ; --i) {
-                    if(!marked[msg.sender][i][4 - i]) {
+                    if(!getMarked(msg.sender, i, 4 - i)) {
                         return;
                     }
                 }
@@ -213,15 +213,23 @@ contract Bingo is Ownable {
     /**
      * Get player board
      */
-    function getBoard(address player) public view returns(uint8[][] memory board) {
-        return playerBoard[player];
+    function getBoard(address player) public view returns(uint8[][] memory) {
+        bytes[] memory _board = playerBoard[player];
+        uint8[][] memory result = new uint8[][](5);
+        for(uint i = 0 ; i < 5 ; ++i) {
+            result[i] = new uint8[](5);
+            for(uint j = 0 ; j < 5 ; ++j) {
+                result[i][j] = uint8(_board[i][j]);
+            }
+        }
+        return result;
     }
 
     /**
      * Get player marked squares
      */
     function getMarkedSquares(address player) public view returns(bool[][] memory _marked) {
-        return marked[player];
+        return decodeMarked(marked[player]);
     }
 
     /**
@@ -242,19 +250,117 @@ contract Bingo is Ownable {
     }
 
     /**
+     * Function to generate a board and a boolean matrix of marked squares
+     * Uses random function to generate the numbers
+     * @return board a 5x5 grid of numbers
+     * @return markedSquares a 5x5 grid of booleans
+     */
+    function generateBoard() public view returns (uint8[][] memory board, bool[][] memory markedSquares) {
+        uint8[][] memory _playerBoard = new uint8[][](5);
+        bool[][] memory _marked = new bool[][](5);
+        uint8 counter = 0;
+        // Generate board
+        for(uint256 i = 0 ; i < 5 ; ++i) {
+            _playerBoard[i] = new uint8[](5);
+            _marked[i] = new bool[](5);
+            for(uint256 j = 0 ; j < 5 ; ++j) {
+                _playerBoard[i][j] = (random(counter));
+                counter++;
+                _marked[i][j] = false;
+            }
+        }
+        _marked[2][2] = true; // mark middle square
+        return (_playerBoard, _marked);
+    }
+
+    /**
+     * Function to generate a boolean matrix of marked squares
+     * Uses random function to generate the numbers
+     * @return markedSquares a 5x5 grid of booleans
+     */
+    function generateMarked() public pure returns (bool[][] memory markedSquares) {
+        bool[][] memory _marked = new bool[][](5);
+        // Generate board
+        for(uint256 i = 0 ; i < 5 ; ++i) {
+            _marked[i] = new bool[](5);
+            for(uint256 j = 0 ; j < 5 ; ++j) {
+                _marked[i][j] = false;
+            }
+        }
+        _marked[2][2] = true; // mark middle square
+        return _marked;
+    }
+
+    function getBoardNumber(address player, uint8 row, uint8 col) public view returns (uint8) {
+        return uint8(playerBoard[player][row][col]);
+    }
+
+    function encodeMarked(bool[][] memory _marked) private pure returns(bytes memory) {
+        return abi.encode(_marked);
+        // for(uint i = 0 ; i < marked.length ; ++i) {
+        //     for(uint j = 0 ; j < marked.length ; ++j) {
+        //         marked
+        //     }
+        // }
+    }
+
+    function decodeMarked(bytes memory _marked) private pure returns(bool[][] memory _result) {
+        return abi.decode(_marked, (bool[][]));
+    }
+
+    /**
+     * Set marked square for player
+     */
+    function setMarked(address player, uint row, uint col) public {
+        bytes memory _marked = marked[player];
+        bool[][] memory __marked = decodeMarked(_marked);
+        __marked[row][col] = true;
+        marked[player] = encodeMarked(__marked);
+    }
+
+    /**
+     * Get marked squares for player
+     */
+    function getMarked(address player, uint row, uint col) public view returns(bool _result) {
+        bytes memory _marked = marked[player];
+        bool[][] memory __marked = decodeMarked(_marked);
+        return __marked[row][col];
+    }
+
+    /**
      * Generates a random number from 0 - 255
      */
     function random() private view returns(uint8) {
         return uint8(uint(blockhash(block.number - 1)) % 255);
     }
 
-
     /**
      * Generate multiple random number in the same function
      * Used to generate player boards
      * @param counter variable which must be changed for each call to this function
      */
-    function random(uint8 counter) private view returns (uint8) {
+    function random(uint256 counter) private view returns (uint8) {
         return uint8(uint(keccak256(abi.encodePacked(block.difficulty, block.timestamp, counter))) % 255);
+    }
+
+    /**
+     * Generate five random numbers and pack into bytes
+     * Used to generate player boards
+     */
+    function randomBytes() public view returns (bytes memory) {
+        uint256 counter = 0;
+        bytes memory randomData = new bytes(32);
+        for(uint i = 0 ; i < 5 ; ++i) {
+            randomData[i] = bytes1(random(counter));
+            counter++;
+        }
+        return randomData;
+    }
+
+    function toByte(uint8 _num) private pure returns (bytes1 _ret) {
+        assembly {
+            mstore8(0x20, _num)
+            _ret := mload(0x20)
+        }
     }
 }
