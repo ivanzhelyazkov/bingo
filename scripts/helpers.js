@@ -58,7 +58,7 @@ function getPlayerWinningSquare(marked) {
             break;
         }
         if(i == 0) {
-            return [i, 2];
+            return [4, 2];
         }
     }
     return [-1, -1];

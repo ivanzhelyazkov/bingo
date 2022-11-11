@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const { isEqual } = require('underscore');
 const { increaseTime, checkIfPlayerHasWon, getPlayerWinningSquare } = require('../scripts/helpers');
 const { deploymentFixture } = require('./fixture');
 
@@ -15,30 +16,33 @@ describe('Contract: Bingo', async () => {
         expect(board).not.be.undefined;
     }),
 
-    it('should be able to get random bytes', async () => {
-        let bytes = await bingo.randomBytes();
-        console.log('bytes:', bytes);
+    it('should be able to encode 5x5 grid in one uint256', async() => {
+        let grid = [[1, 2, 3, 4, 5], [1, 2, 3, 7, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]];
+        let res = await bingo.encodeGrid(grid, 0);
+        let decoded = await bingo.decodeGrid(res);
+        expect(isEqual(grid, decoded)).to.be.true;
     }),
 
-    it('should be able to store uint in uint256', async() => {
-        let res = await bingo.encodeNum(1, 2, 3, 4);
-        console.log('res:', res);
-        let reversed = await bingo.decodeNum(res);
-        console.log('reversed:', reversed);
-    }),
+    it('should be able to encode 5x5 bool matrix in one uint256', async() => {
+        let matrix = [[false, true, true, false, true], 
+            [true, true, true, false, true], [false, true, true, false, true],
+            [false, true, true, false, true], [false, true, true, false, true]];
+        let res = await bingo.encodeBoolMatrix(matrix, 0);
+        let decoded = await bingo.decodeBoolMatrix(res);
+        expect(isEqual(matrix, decoded)).to.be.true;
+    })
 
-    it('should be able to encode grid in uint256', async() => {
-        let res = await bingo.encodeGrid([[1, 2, 3, 4, 5], [1, 2, 3, 7, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]);
-        console.log('res:', res);
-        let reversed = await bingo.decodeGrid(res);
-        console.log('reversed:', reversed);
-    }),
-
-    it('should be able to encode bool matrix in uint256', async() => {
-        let res = await bingo.encodeGrid([[0, 1, 1, 0, 1], [0, 1, 1, 0, 1], [0, 1, 1, 0, 1], [0, 1, 1, 0, 1], [0, 1, 1, 0, 1]]);
-        console.log('res:', res);
-        let reversed = await bingo.decodeGrid(res);
-        console.log('reversed:', reversed);
+    it('should be able to store both grid and bool matrix in one uint256', async() => {
+        let grid = [[1, 2, 3, 4, 5], [1, 2, 3, 7, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5]];
+        let matrix = [[false, true, true, false, true], 
+            [true, true, true, false, true], [false, true, true, false, true],
+            [false, true, true, false, true], [false, true, true, false, true]];
+        let res = await bingo.encodeGrid(grid, 0);
+        res = await bingo.encodeBoolMatrix(matrix, res);
+        let decoded = await bingo.decodeGrid(res);
+        let decodedMatrix = await bingo.decodeBoolMatrix(res);
+        expect(isEqual(grid, decoded)).to.be.true;
+        expect(isEqual(matrix, decodedMatrix)).to.be.true;
     })
   })
 })

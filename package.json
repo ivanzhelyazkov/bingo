@@ -22,6 +22,7 @@
     "hardhat-deploy": "^0.11.20",
     "hardhat-deploy-ethers": "^0.3.0-beta.13",
     "hardhat-gas-reporter": "^1.0.9",
+    "underscore": "^1.13.6",
     "web3": "^1.8.1"
   },
   "devDependencies": {},
